@@ -5,6 +5,7 @@ Provides:
 - REST API for starting/stopping crawls
 - WebSocket for real-time progress updates
 - Crawl history and data viewing
+- Schedule management for recurring crawls
 """
 
 import asyncio
@@ -21,13 +22,38 @@ from pydantic import BaseModel
 from crawler.config import CrawlerConfig
 from crawler.crawler import Crawler
 from crawler.storage import CrawlDatabase, ContentStorage
+from crawler.scheduler import (
+    CrawlScheduler, ScheduleConfig, ScheduleType, ScheduleStatus, get_scheduler
+)
 
 
 app = FastAPI(
     title="SOTA Web Crawler",
     description="State-of-the-art web crawling system with real-time monitoring",
-    version="1.0.0"
+    version="1.1.0"
 )
+
+# Global scheduler
+scheduler: Optional[CrawlScheduler] = None
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize scheduler on startup."""
+    global scheduler
+    scheduler = get_scheduler(
+        db_path=Path("./data/scheduler.db"),
+        output_dir=Path("./data")
+    )
+    await scheduler.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup scheduler on shutdown."""
+    global scheduler
+    if scheduler:
+        await scheduler.stop()
 
 # Global state
 active_crawlers: dict[str, dict] = {}
@@ -303,6 +329,185 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_json({"type": "pong", "data": data})
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+# ============== Schedule API Endpoints ==============
+
+class ScheduleRequest(BaseModel):
+    """Request to create/update a schedule."""
+    name: str
+    url: str
+    schedule_type: str = "interval"  # cron, interval, once
+    cron_expression: Optional[str] = None
+    interval_hours: Optional[int] = None
+    run_at: Optional[str] = None  # ISO datetime string
+    max_pages: int = 100
+    max_depth: int = 10
+    delay: float = 1.0
+    concurrent: int = 5
+    respect_robots: bool = True
+    render: bool = False
+
+
+@app.get("/api/schedules")
+async def get_schedules():
+    """Get all schedules."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    schedules = scheduler.get_all_schedules()
+    return {
+        "schedules": [
+            {
+                "id": s.id,
+                "name": s.name,
+                "url": s.url,
+                "schedule_type": s.schedule_type.value,
+                "cron_expression": s.cron_expression,
+                "interval_seconds": s.interval_seconds,
+                "status": s.status.value,
+                "last_run": s.last_run.isoformat() if s.last_run else None,
+                "next_run": s.next_run.isoformat() if s.next_run else None,
+                "run_count": s.run_count
+            }
+            for s in schedules
+        ]
+    }
+
+
+@app.post("/api/schedules")
+async def create_schedule(request: ScheduleRequest):
+    """Create a new schedule."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    # Convert interval hours to seconds
+    interval_seconds = None
+    if request.interval_hours:
+        interval_seconds = request.interval_hours * 3600
+    
+    # Parse run_at datetime
+    run_at = None
+    if request.run_at:
+        try:
+            run_at = datetime.fromisoformat(request.run_at)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid datetime format")
+    
+    config = ScheduleConfig(
+        name=request.name,
+        url=request.url,
+        schedule_type=ScheduleType(request.schedule_type),
+        cron_expression=request.cron_expression,
+        interval_seconds=interval_seconds,
+        run_at=run_at,
+        max_pages=request.max_pages,
+        max_depth=request.max_depth,
+        delay=request.delay,
+        concurrent=request.concurrent,
+        respect_robots=request.respect_robots,
+        render=request.render
+    )
+    
+    created = scheduler.create_schedule(config)
+    
+    return {
+        "message": "Schedule created",
+        "schedule": {
+            "id": created.id,
+            "name": created.name,
+            "status": created.status.value
+        }
+    }
+
+
+@app.get("/api/schedules/{schedule_id}")
+async def get_schedule(schedule_id: int):
+    """Get a specific schedule."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    schedule = scheduler.get_schedule(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    
+    return {
+        "id": schedule.id,
+        "name": schedule.name,
+        "url": schedule.url,
+        "schedule_type": schedule.schedule_type.value,
+        "cron_expression": schedule.cron_expression,
+        "interval_seconds": schedule.interval_seconds,
+        "max_pages": schedule.max_pages,
+        "max_depth": schedule.max_depth,
+        "delay": schedule.delay,
+        "concurrent": schedule.concurrent,
+        "respect_robots": schedule.respect_robots,
+        "render": schedule.render,
+        "status": schedule.status.value,
+        "last_run": schedule.last_run.isoformat() if schedule.last_run else None,
+        "next_run": schedule.next_run.isoformat() if schedule.next_run else None,
+        "run_count": schedule.run_count
+    }
+
+
+@app.delete("/api/schedules/{schedule_id}")
+async def delete_schedule(schedule_id: int):
+    """Delete a schedule."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    if scheduler.delete_schedule(schedule_id):
+        return {"message": "Schedule deleted"}
+    raise HTTPException(status_code=404, detail="Schedule not found")
+
+
+@app.post("/api/schedules/{schedule_id}/pause")
+async def pause_schedule(schedule_id: int):
+    """Pause a schedule."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    if scheduler.pause_schedule(schedule_id):
+        return {"message": "Schedule paused"}
+    raise HTTPException(status_code=404, detail="Schedule not found")
+
+
+@app.post("/api/schedules/{schedule_id}/resume")
+async def resume_schedule(schedule_id: int):
+    """Resume a paused schedule."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    if scheduler.resume_schedule(schedule_id):
+        return {"message": "Schedule resumed"}
+    raise HTTPException(status_code=404, detail="Schedule not found")
+
+
+@app.get("/api/schedules/{schedule_id}/runs")
+async def get_schedule_runs(schedule_id: int):
+    """Get recent runs for a schedule."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    runs = scheduler.get_schedule_runs(schedule_id)
+    return {"runs": runs}
+
+
+@app.post("/api/schedules/{schedule_id}/run-now")
+async def run_schedule_now(schedule_id: int):
+    """Trigger an immediate run of a schedule."""
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+    
+    schedule = scheduler.get_schedule(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    
+    # Trigger the crawl immediately
+    asyncio.create_task(scheduler._run_crawl(schedule_id))
+    
+    return {"message": "Schedule triggered"}
 
 
 # Mount static files for UI

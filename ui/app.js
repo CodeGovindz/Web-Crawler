@@ -1,8 +1,3 @@
-/**
- * SOTA Web Crawler - Frontend Application
- * Real-time crawl monitoring with WebSocket
- */
-
 class CrawlerApp {
     constructor() {
         this.ws = null;
@@ -13,6 +8,7 @@ class CrawlerApp {
         this.initEventListeners();
         this.connectWebSocket();
         this.loadHistory();
+        this.loadSchedules();
     }
 
     initElements() {
@@ -49,10 +45,18 @@ class CrawlerApp {
         this.historyBody = document.getElementById('historyBody');
         this.refreshHistoryBtn = document.getElementById('refreshHistory');
 
-        // Modal
+        // Modals
         this.dataModal = document.getElementById('dataModal');
         this.modalBody = document.getElementById('modalBody');
         this.closeModalBtn = document.getElementById('closeModal');
+
+        // Schedule elements
+        this.schedulesBody = document.getElementById('schedulesBody');
+        this.newScheduleBtn = document.getElementById('newScheduleBtn');
+        this.scheduleModal = document.getElementById('scheduleModal');
+        this.closeScheduleModalBtn = document.getElementById('closeScheduleModal');
+        this.scheduleForm = document.getElementById('scheduleForm');
+        this.scheduleType = document.getElementById('scheduleType');
     }
 
     initEventListeners() {
@@ -78,6 +82,18 @@ class CrawlerApp {
         this.maxPagesInput.addEventListener('change', () => {
             this.maxPages = parseInt(this.maxPagesInput.value) || 50;
         });
+
+        // Schedule events
+        this.newScheduleBtn.addEventListener('click', () => this.openScheduleModal());
+        this.closeScheduleModalBtn.addEventListener('click', () => this.closeScheduleModal());
+        this.scheduleModal.addEventListener('click', (e) => {
+            if (e.target === this.scheduleModal) this.closeScheduleModal();
+        });
+        this.scheduleForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.createSchedule();
+        });
+        this.scheduleType.addEventListener('change', () => this.updateScheduleTypeFields());
     }
 
     connectWebSocket() {
@@ -93,7 +109,6 @@ class CrawlerApp {
 
             this.ws.onclose = () => {
                 this.updateConnectionStatus('disconnected');
-                // Reconnect after 3 seconds
                 setTimeout(() => this.connectWebSocket(), 3000);
             };
 
@@ -114,64 +129,42 @@ class CrawlerApp {
     updateConnectionStatus(status) {
         this.connectionStatus.className = `connection-status ${status}`;
         const statusText = this.connectionStatus.querySelector('.status-text');
-
         switch (status) {
-            case 'connected':
-                statusText.textContent = 'Connected';
-                break;
-            case 'disconnected':
-                statusText.textContent = 'Disconnected';
-                break;
-            default:
-                statusText.textContent = 'Connecting...';
+            case 'connected': statusText.textContent = 'Connected'; break;
+            case 'disconnected': statusText.textContent = 'Disconnected'; break;
+            default: statusText.textContent = 'Connecting...';
         }
     }
 
     handleWebSocketMessage(data) {
         switch (data.type) {
-            case 'progress':
-                this.updateProgress(data.stats);
-                break;
-            case 'crawl_started':
-                this.onCrawlStarted(data);
-                break;
-            case 'crawl_completed':
-                this.onCrawlCompleted(data);
-                break;
-            case 'crawl_error':
-                this.onCrawlError(data);
-                break;
+            case 'progress': this.updateProgress(data.stats); break;
+            case 'crawl_started': this.onCrawlStarted(data); break;
+            case 'crawl_completed': this.onCrawlCompleted(data); break;
+            case 'crawl_error': this.onCrawlError(data); break;
         }
     }
 
     async startCrawl() {
         const url = this.urlInput.value.trim();
         if (!url) return;
-
         this.maxPages = parseInt(this.maxPagesInput.value) || 50;
-
         const payload = {
-            url: url,
-            max_pages: this.maxPages,
+            url, max_pages: this.maxPages,
             max_depth: parseInt(this.maxDepthInput.value) || 10,
             delay: parseFloat(this.delayInput.value) || 1.0,
             concurrent: parseInt(this.concurrentInput.value) || 5,
             respect_robots: this.respectRobotsCheck.checked,
             render: this.renderCheck.checked
         };
-
         this.startBtn.disabled = true;
         this.startBtn.innerHTML = '<span class="btn-icon">⏳</span> Starting...';
-
         try {
             const response = await fetch('/api/crawl', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-
             const result = await response.json();
-
             if (response.ok) {
                 this.currentCrawlId = result.crawl_id;
                 this.showActiveCrawl(url);
@@ -180,7 +173,6 @@ class CrawlerApp {
                 this.resetStartButton();
             }
         } catch (error) {
-            console.error('Error starting crawl:', error);
             alert('Failed to start crawl. Is the server running?');
             this.resetStartButton();
         }
@@ -188,14 +180,8 @@ class CrawlerApp {
 
     async stopCrawl() {
         if (!this.currentCrawlId) return;
-
-        try {
-            await fetch(`/api/crawl/${this.currentCrawlId}`, {
-                method: 'DELETE'
-            });
-        } catch (error) {
-            console.error('Error stopping crawl:', error);
-        }
+        try { await fetch(`/api/crawl/${this.currentCrawlId}`, { method: 'DELETE' }); }
+        catch (error) { console.error('Error stopping crawl:', error); }
     }
 
     showActiveCrawl(url) {
@@ -229,31 +215,19 @@ class CrawlerApp {
         this.statFailed.textContent = stats.pages_failed || 0;
         this.statQueue.textContent = stats.queue_size || 0;
         this.statSeen.textContent = stats.urls_seen || 0;
-
-        // Calculate progress
         const total = stats.pages_crawled + stats.pages_failed + stats.pages_skipped;
         const percent = Math.min(100, Math.round((total / this.maxPages) * 100));
-
         this.progressFill.style.width = `${percent}%`;
         this.progressText.textContent = `${percent}%`;
     }
 
-    onCrawlStarted(data) {
-        console.log('Crawl started:', data);
-    }
-
+    onCrawlStarted(data) { console.log('Crawl started:', data); }
     onCrawlCompleted(data) {
-        console.log('Crawl completed:', data);
         this.hideActiveCrawl();
         this.loadHistory();
-
-        // Show completion notification
-        const stats = data.stats;
-        alert(`Crawl completed!\n\nPages crawled: ${stats.pages_crawled}\nPages failed: ${stats.pages_failed}`);
+        alert(`Crawl completed!\n\nPages crawled: ${data.stats.pages_crawled}\nPages failed: ${data.stats.pages_failed}`);
     }
-
     onCrawlError(data) {
-        console.error('Crawl error:', data);
         this.hideActiveCrawl();
         alert('Crawl failed: ' + data.error);
     }
@@ -262,32 +236,25 @@ class CrawlerApp {
         try {
             const response = await fetch('/api/history');
             const data = await response.json();
-
             this.renderHistory(data.sessions);
         } catch (error) {
-            console.error('Error loading history:', error);
-            this.historyBody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load history</td></tr>';
+            this.historyBody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load</td></tr>';
         }
     }
 
     renderHistory(sessions) {
         if (!sessions || sessions.length === 0) {
-            this.historyBody.innerHTML = '<tr><td colspan="6" class="empty-state">No crawl history yet</td></tr>';
+            this.historyBody.innerHTML = '<tr><td colspan="6" class="empty-state">No crawl history</td></tr>';
             return;
         }
-
-        this.historyBody.innerHTML = sessions.map(session => `
+        this.historyBody.innerHTML = sessions.map(s => `
             <tr>
-                <td>#${session.id}</td>
-                <td class="url-cell" title="${session.seed_url}">${session.seed_url}</td>
-                <td><span class="status-badge ${session.status}">${session.status}</span></td>
-                <td>${session.pages_crawled || 0}</td>
-                <td>${this.formatDate(session.started_at)}</td>
-                <td>
-                    <button class="btn btn-secondary btn-sm" onclick="app.viewData(${session.id})">
-                        View
-                    </button>
-                </td>
+                <td>#${s.id}</td>
+                <td class="url-cell" title="${s.seed_url}">${s.seed_url}</td>
+                <td><span class="status-badge ${s.status}">${s.status}</span></td>
+                <td>${s.pages_crawled || 0}</td>
+                <td>${this.formatDate(s.started_at)}</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="app.viewData(${s.id})">View</button></td>
             </tr>
         `).join('');
     }
@@ -302,10 +269,8 @@ class CrawlerApp {
         try {
             const response = await fetch(`/api/data/${sessionId}?limit=50`);
             const data = await response.json();
-
             this.showDataModal(data.records);
         } catch (error) {
-            console.error('Error loading data:', error);
             alert('Failed to load crawl data');
         }
     }
@@ -314,27 +279,141 @@ class CrawlerApp {
         if (!records || records.length === 0) {
             this.modalBody.innerHTML = '<p class="empty-state">No data available</p>';
         } else {
-            this.modalBody.innerHTML = records.map(record => `
+            this.modalBody.innerHTML = records.map(r => `
                 <div class="data-card">
-                    <div class="data-card-title">${this.escapeHtml(record.title || 'No Title')}</div>
-                    <div class="data-card-url">${this.escapeHtml(record.url)}</div>
-                    <div class="data-card-text">${this.escapeHtml(record.description || record.text?.substring(0, 300) || 'No content')}</div>
+                    <div class="data-card-title">${this.escapeHtml(r.title || 'No Title')}</div>
+                    <div class="data-card-url">${this.escapeHtml(r.url)}</div>
+                    <div class="data-card-text">${this.escapeHtml(r.description || r.text?.substring(0, 300) || '')}</div>
                 </div>
             `).join('');
         }
-
         this.dataModal.classList.add('active');
     }
 
-    closeModal() {
-        this.dataModal.classList.remove('active');
-    }
+    closeModal() { this.dataModal.classList.remove('active'); }
 
     escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // ============== Schedule Methods ==============
+
+    async loadSchedules() {
+        try {
+            const response = await fetch('/api/schedules');
+            const data = await response.json();
+            this.renderSchedules(data.schedules);
+        } catch (error) {
+            this.schedulesBody.innerHTML = '<tr><td colspan="7" class="empty-state">Failed to load schedules</td></tr>';
+        }
+    }
+
+    renderSchedules(schedules) {
+        if (!schedules || schedules.length === 0) {
+            this.schedulesBody.innerHTML = '<tr><td colspan="7" class="empty-state">No scheduled crawls yet</td></tr>';
+            return;
+        }
+        this.schedulesBody.innerHTML = schedules.map(s => `
+            <tr>
+                <td>${this.escapeHtml(s.name)}</td>
+                <td class="url-cell" title="${s.url}">${s.url}</td>
+                <td>${this.formatSchedule(s)}</td>
+                <td><span class="status-badge ${s.status}">${s.status}</span></td>
+                <td>${s.last_run ? this.formatDate(s.last_run) : 'Never'}</td>
+                <td>${s.run_count}</td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="app.runScheduleNow(${s.id})">▶</button>
+                    ${s.status === 'active'
+                ? `<button class="btn btn-secondary btn-sm" onclick="app.pauseSchedule(${s.id})">⏸</button>`
+                : `<button class="btn btn-secondary btn-sm" onclick="app.resumeSchedule(${s.id})">▶️</button>`
+            }
+                    <button class="btn btn-danger btn-sm" onclick="app.deleteSchedule(${s.id})">✕</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    formatSchedule(schedule) {
+        if (schedule.schedule_type === 'cron') return `Cron: ${schedule.cron_expression}`;
+        if (schedule.schedule_type === 'interval') {
+            const hours = Math.round(schedule.interval_seconds / 3600);
+            return `Every ${hours}h`;
+        }
+        return 'One-time';
+    }
+
+    openScheduleModal() { this.scheduleModal.classList.add('active'); }
+    closeScheduleModal() { this.scheduleModal.classList.remove('active'); }
+
+    updateScheduleTypeFields() {
+        const type = this.scheduleType.value;
+        document.getElementById('intervalGroup').style.display = type === 'interval' ? 'block' : 'none';
+        document.getElementById('cronGroup').style.display = type === 'cron' ? 'block' : 'none';
+        document.getElementById('onceGroup').style.display = type === 'once' ? 'block' : 'none';
+    }
+
+    async createSchedule() {
+        const type = this.scheduleType.value;
+        const payload = {
+            name: document.getElementById('scheduleName').value,
+            url: document.getElementById('scheduleUrl').value,
+            schedule_type: type,
+            max_pages: parseInt(document.getElementById('schedMaxPages').value) || 100,
+            max_depth: parseInt(document.getElementById('schedMaxDepth').value) || 10
+        };
+        if (type === 'interval') payload.interval_hours = parseInt(document.getElementById('intervalHours').value) || 24;
+        if (type === 'cron') payload.cron_expression = document.getElementById('cronExpression').value;
+        if (type === 'once') payload.run_at = document.getElementById('runAt').value;
+
+        try {
+            const response = await fetch('/api/schedules', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                this.closeScheduleModal();
+                this.loadSchedules();
+                this.scheduleForm.reset();
+            } else {
+                const error = await response.json();
+                alert('Failed to create schedule: ' + (error.detail || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Failed to create schedule');
+        }
+    }
+
+    async deleteSchedule(id) {
+        if (!confirm('Delete this schedule?')) return;
+        try {
+            await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
+            this.loadSchedules();
+        } catch (error) { alert('Failed to delete'); }
+    }
+
+    async pauseSchedule(id) {
+        try {
+            await fetch(`/api/schedules/${id}/pause`, { method: 'POST' });
+            this.loadSchedules();
+        } catch (error) { alert('Failed to pause'); }
+    }
+
+    async resumeSchedule(id) {
+        try {
+            await fetch(`/api/schedules/${id}/resume`, { method: 'POST' });
+            this.loadSchedules();
+        } catch (error) { alert('Failed to resume'); }
+    }
+
+    async runScheduleNow(id) {
+        try {
+            await fetch(`/api/schedules/${id}/run-now`, { method: 'POST' });
+            alert('Schedule triggered!');
+            this.loadSchedules();
+        } catch (error) { alert('Failed to trigger'); }
     }
 }
 
