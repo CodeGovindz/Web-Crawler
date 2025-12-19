@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOTA Web Crawler</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="background-effects">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+    
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🕷️</span>
+                <h1>SOTA Crawler</h1>
+            </div>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </header>
+        
+        <main class="main-content">
+            <!-- Crawl Form Section -->
+            <section class="glass-card crawl-form-section">
+                <h2>Start New Crawl</h2>
+                <form id="crawlForm" class="crawl-form">
+                    <div class="form-group">
+                        <label for="urlInput">URL to Crawl</label>
+                        <input type="url" id="urlInput" placeholder="https://example.com" required>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="maxPages">Max Pages</label>
+                            <input type="number" id="maxPages" value="50" min="1" max="10000">
+                        </div>
+                        <div class="form-group">
+                            <label for="maxDepth">Max Depth</label>
+                            <input type="number" id="maxDepth" value="10" min="1" max="50">
+                        </div>
+                        <div class="form-group">
+                            <label for="delay">Delay (s)</label>
+                            <input type="number" id="delay" value="1" min="0.1" max="10" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="concurrent">Concurrent</label>
+                            <input type="number" id="concurrent" value="5" min="1" max="20">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="respectRobots" checked>
+                            <label for="respectRobots">Respect robots.txt</label>
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="enableRender">
+                            <label for="enableRender">JavaScript Rendering</label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="startBtn">
+                        <span class="btn-icon">🚀</span>
+                        Start Crawling
+                    </button>
+                </form>
+            </section>
+            
+            <!-- Active Crawl Section -->
+            <section class="glass-card active-crawl-section" id="activeCrawlSection" style="display: none;">
+                <div class="section-header">
+                    <h2>Active Crawl</h2>
+                    <button class="btn btn-danger btn-sm" id="stopBtn">Stop</button>
+                </div>
+                
+                <div class="crawl-url" id="crawlUrl"></div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="statCrawled">0</div>
+                        <div class="stat-label">Pages Crawled</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statFailed">0</div>
+                        <div class="stat-label">Failed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statQueue">0</div>
+                        <div class="stat-label">In Queue</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statSeen">0</div>
+                        <div class="stat-label">URLs Seen</div>
+                    </div>
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+            </section>
+            
+            <!-- History Section -->
+            <section class="glass-card history-section">
+                <div class="section-header">
+                    <h2>Crawl History</h2>
+                    <button class="btn btn-secondary btn-sm" id="refreshHistory">↻ Refresh</button>
+                </div>
+                
+                <div class="history-table-container">
+                    <table class="history-table" id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>URL</th>
+                                <th>Status</th>
+                                <th>Pages</th>
+                                <th>Started</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyBody">
+                            <tr>
+                                <td colspan="6" class="empty-state">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Data Viewer Modal -->
+            <div class="modal" id="dataModal">
+                <div class="modal-content glass-card">
+                    <div class="modal-header">
+                        <h3>Crawled Data</h3>
+                        <button class="modal-close" id="closeModal">&times;</button>
+                    </div>
+                    <div class="modal-body" id="modalBody">
+                        <!-- Data will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="footer">
+            <p>SOTA Web Crawler &copy; 2024 • Real-time crawling with WebSocket updates</p>
+        </footer>
+    </div>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>
