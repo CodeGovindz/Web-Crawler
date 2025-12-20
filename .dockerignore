@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (don't include local data in build)
+data/
+*.db
+*.sqlite
+
+# Tests
+tests/
+pytest_cache/
+.coverage
+
+# Misc
+*.log
+.DS_Store
+Thumbs.db
