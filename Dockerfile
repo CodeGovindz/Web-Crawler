@@ -21,12 +21,14 @@ COPY . .
 # Create data directory
 RUN mkdir -p /app/data
 
+# Make start script executable
+RUN chmod +x start.sh
+
 # Set default port
 ENV PORT=8000
 
 # Expose port
 EXPOSE 8000
 
-# Start command - use exec form with shell to expand $PORT
-ENTRYPOINT ["sh", "-c"]
-CMD ["uvicorn web_api:app --host 0.0.0.0 --port $PORT"]
+# Use the start script
+CMD ["/bin/bash", "start.sh"]
