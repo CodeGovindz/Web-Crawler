@@ -28,23 +28,25 @@ from crawler.scheduler import (
 )
 from crawler.changes import ChangeDatabase, ChangeDetector, get_change_db
 from crawler.classifier import classify_content, get_classifier
+from crawler.search import SearchIndex, get_search_index
 
 
 app = FastAPI(
     title="SOTA Web Crawler",
     description="State-of-the-art web crawling system with real-time monitoring",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 # Global instances
 scheduler: Optional[CrawlScheduler] = None
 change_db: Optional[ChangeDatabase] = None
+search_index: Optional[SearchIndex] = None
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize scheduler and change detection on startup."""
-    global scheduler, change_db
+    """Initialize all services on startup."""
+    global scheduler, change_db, search_index
     scheduler = get_scheduler(
         db_path=Path("./data/scheduler.db"),
         output_dir=Path("./data")
@@ -52,16 +54,19 @@ async def startup_event():
     await scheduler.start()
     
     change_db = get_change_db(Path("./data/changes.db"))
+    search_index = get_search_index(Path("./data/search.db"))
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
-    global scheduler, change_db
+    global scheduler, change_db, search_index
     if scheduler:
         await scheduler.stop()
     if change_db:
         change_db.close()
+    if search_index:
+        search_index.close()
 
 # Global state
 active_crawlers: dict[str, dict] = {}
@@ -745,6 +750,108 @@ async def classify_session(session_id: int, limit: int = 20):
         "total_classified": len(results),
         "category_distribution": categories,
         "pages": results
+    }
+
+
+# ============== Search API Endpoints ==============
+
+@app.get("/api/search")
+async def search_pages(
+    q: str,
+    page: int = 1,
+    per_page: int = 20,
+    session_id: int = None,
+    domain: str = None
+):
+    """
+    Search across all indexed content.
+    
+    Args:
+        q: Search query (supports prefix matching and phrases)
+        page: Page number (1-indexed)
+        per_page: Results per page (max 100)
+        session_id: Optional filter by crawl session
+        domain: Optional filter by domain
+    """
+    if not search_index:
+        raise HTTPException(status_code=503, detail="Search not initialized")
+    
+    per_page = min(per_page, 100)
+    
+    result = search_index.search(
+        query=q,
+        page=page,
+        per_page=per_page,
+        session_id=session_id,
+        domain=domain
+    )
+    
+    return {
+        "query": result.query,
+        "total_results": result.total_results,
+        "page": result.page,
+        "per_page": result.per_page,
+        "search_time_ms": result.search_time_ms,
+        "results": [
+            {
+                "id": r.id,
+                "url": r.url,
+                "title": r.title,
+                "snippet": r.snippet,
+                "score": round(r.score, 2),
+                "word_count": r.word_count
+            }
+            for r in result.results
+        ]
+    }
+
+
+@app.get("/api/search/stats")
+async def get_search_stats():
+    """Get search index statistics."""
+    if not search_index:
+        raise HTTPException(status_code=503, detail="Search not initialized")
+    
+    return search_index.get_stats()
+
+
+@app.post("/api/search/index/{session_id}")
+async def index_session_content(session_id: int):
+    """Index all content from a crawl session."""
+    if not search_index:
+        raise HTTPException(status_code=503, detail="Search not initialized")
+    
+    count = search_index.index_session(session_id, Path("./data"))
+    
+    if count == 0:
+        raise HTTPException(status_code=404, detail="No content found for session")
+    
+    return {"message": f"Indexed {count} pages", "session_id": session_id}
+
+
+@app.post("/api/search/index-all")
+async def index_all_sessions():
+    """Index content from all crawl sessions."""
+    if not search_index:
+        raise HTTPException(status_code=503, detail="Search not initialized")
+    
+    data_dir = Path("./data")
+    total = 0
+    sessions = []
+    
+    for content_file in data_dir.glob("content_*.jsonl"):
+        try:
+            session_id = int(content_file.stem.split("_")[1])
+            count = search_index.index_session(session_id, data_dir)
+            total += count
+            sessions.append({"session_id": session_id, "pages": count})
+        except (ValueError, IndexError):
+            pass
+    
+    return {
+        "message": f"Indexed {total} pages from {len(sessions)} sessions",
+        "total_pages": total,
+        "sessions": sessions
     }
 
 

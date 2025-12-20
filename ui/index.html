@@ -31,6 +31,19 @@
         </header>
 
         <main class="main-content">
+            <!-- Search Section -->
+            <section class="glass-card search-section">
+                <div class="search-bar">
+                    <input type="text" id="searchInput" placeholder="🔍 Search crawled content..." class="search-input">
+                    <button class="btn btn-primary btn-sm" id="searchBtn">Search</button>
+                    <button class="btn btn-secondary btn-sm" id="indexAllBtn" title="Index all sessions for search">📥
+                        Index All</button>
+                </div>
+                <div id="searchResults" class="search-results" style="display: none;">
+                    <!-- Search results will appear here -->
+                </div>
+            </section>
+
             <!-- Crawl Form Section -->
             <section class="glass-card crawl-form-section">
                 <h2>Start New Crawl</h2>

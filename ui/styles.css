@@ -917,3 +917,109 @@ body {
     background: rgba(100, 116, 139, 0.2);
     color: #64748b;
 }
+
+/* Search Styles */
+.search-section {
+    padding: 16px 28px;
+}
+
+.search-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.search-input {
+    flex: 1;
+    padding: 12px 18px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-family: var(--font-family);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.search-results {
+    margin-top: 20px;
+}
+
+.search-meta {
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+.search-meta .hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.search-results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.search-result-card {
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+}
+
+.search-result-card .result-title {
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-decoration: none;
+    font-size: 1.05rem;
+}
+
+.search-result-card .result-title:hover {
+    text-decoration: underline;
+}
+
+.search-result-card .result-url {
+    font-size: 0.8rem;
+    color: var(--accent-tertiary);
+    margin: 4px 0;
+    word-break: break-all;
+}
+
+.search-result-card .result-snippet {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 8px 0;
+}
+
+.search-result-card .result-snippet mark {
+    background: rgba(99, 102, 241, 0.3);
+    color: var(--text-primary);
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+
+.search-result-card .result-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.loading {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.error {
+    color: var(--danger);
+}

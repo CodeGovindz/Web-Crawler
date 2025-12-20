@@ -608,4 +608,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load changes on page load
     app.loadChanges();
+
+    // Search event listeners
+    const searchBtn = document.getElementById('searchBtn');
+    const searchInput = document.getElementById('searchInput');
+    const indexAllBtn = document.getElementById('indexAllBtn');
+
+    if (searchBtn && searchInput) {
+        searchBtn.addEventListener('click', () => {
+            const query = searchInput.value.trim();
+            if (query) performSearch(query);
+        });
+
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const query = searchInput.value.trim();
+                if (query) performSearch(query);
+            }
+        });
+    }
+
+    if (indexAllBtn) {
+        indexAllBtn.addEventListener('click', async () => {
+            indexAllBtn.disabled = true;
+            indexAllBtn.textContent = '⏳ Indexing...';
+            try {
+                const response = await fetch('/api/search/index-all', { method: 'POST' });
+                const data = await response.json();
+                alert(`Indexed ${data.total_pages} pages from ${data.sessions.length} sessions!`);
+            } catch (error) {
+                alert('Failed to index sessions');
+            }
+            indexAllBtn.disabled = false;
+            indexAllBtn.textContent = '📥 Index All';
+        });
+    }
 });
+
+async function performSearch(query) {
+    const resultsDiv = document.getElementById('searchResults');
+    if (!resultsDiv) return;
+
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<p class="loading">Searching...</p>';
+
+    try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&per_page=20`);
+        const data = await response.json();
+
+        if (data.total_results === 0) {
+            resultsDiv.innerHTML = `
+                <div class="search-meta">
+                    <p>No results found for "<strong>${escapeHtml(query)}</strong>"</p>
+                    <p class="hint">Try indexing sessions first with the 📥 button</p>
+                </div>
+            `;
+            return;
+        }
+
+        resultsDiv.innerHTML = `
+            <div class="search-meta">
+                <p>Found <strong>${data.total_results}</strong> results in ${data.search_time_ms}ms</p>
+            </div>
+            <div class="search-results-list">
+                ${data.results.map(r => `
+                    <div class="search-result-card">
+                        <a href="${escapeHtml(r.url)}" target="_blank" class="result-title">${escapeHtml(r.title)}</a>
+                        <div class="result-url">${escapeHtml(r.url)}</div>
+                        <div class="result-snippet">${r.snippet}</div>
+                        <div class="result-meta">
+                            <span>📊 Score: ${r.score}</span>
+                            <span>📝 ${r.word_count} words</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch (error) {
+        resultsDiv.innerHTML = '<p class="error">Search failed. Make sure sessions are indexed.</p>';
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
