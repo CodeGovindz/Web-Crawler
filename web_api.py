@@ -27,6 +27,7 @@ from crawler.scheduler import (
     CrawlScheduler, ScheduleConfig, ScheduleType, ScheduleStatus, get_scheduler
 )
 from crawler.changes import ChangeDatabase, ChangeDetector, get_change_db
+from crawler.classifier import classify_content, get_classifier
 
 
 app = FastAPI(
@@ -677,6 +678,74 @@ async def check_url_for_changes(request: CheckUrlRequest):
         }
     
     return {"changed": False}
+
+
+# ============== Classification API Endpoints ==============
+
+class ClassifyRequest(BaseModel):
+    """Request to classify content."""
+    text: str
+    url: Optional[str] = ""
+    title: Optional[str] = ""
+
+
+@app.post("/api/classify")
+async def classify_text(request: ClassifyRequest):
+    """Classify text content and extract insights."""
+    result = classify_content(
+        text=request.text,
+        url=request.url or "",
+        title=request.title or ""
+    )
+    return result
+
+
+@app.get("/api/classify/session/{session_id}")
+async def classify_session(session_id: int, limit: int = 20):
+    """Classify all content from a crawl session."""
+    content_file = Path(f"./data/content_{session_id}.jsonl")
+    if not content_file.exists():
+        raise HTTPException(status_code=404, detail="Session data not found")
+    
+    results = []
+    classifier = get_classifier(use_ml=False)  # Use fast rule-based
+    
+    with open(content_file, 'r', encoding='utf-8') as f:
+        for i, line in enumerate(f):
+            if i >= limit:
+                break
+            if line.strip():
+                try:
+                    record = json.loads(line)
+                    text = record.get('text', '')[:3000]
+                    title = record.get('title', '')
+                    url = record.get('url', '')
+                    
+                    classification = classifier.classify(text, url, title)
+                    results.append({
+                        "url": url,
+                        "title": title,
+                        "category": classification.category,
+                        "confidence": classification.category_confidence,
+                        "keywords": classification.keywords[:5],
+                        "sentiment": classification.sentiment,
+                        "word_count": classification.word_count
+                    })
+                except json.JSONDecodeError:
+                    pass
+    
+    # Category summary
+    categories = {}
+    for r in results:
+        cat = r["category"]
+        categories[cat] = categories.get(cat, 0) + 1
+    
+    return {
+        "session_id": session_id,
+        "total_classified": len(results),
+        "category_distribution": categories,
+        "pages": results
+    }
 
 
 # Mount static files for UI

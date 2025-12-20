@@ -238,13 +238,13 @@ class CrawlerApp {
             const data = await response.json();
             this.renderHistory(data.sessions);
         } catch (error) {
-            this.historyBody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load</td></tr>';
+            this.historyBody.innerHTML = '<tr><td colspan="7" class="empty-state">Failed to load</td></tr>';
         }
     }
 
     renderHistory(sessions) {
         if (!sessions || sessions.length === 0) {
-            this.historyBody.innerHTML = '<tr><td colspan="6" class="empty-state">No crawl history</td></tr>';
+            this.historyBody.innerHTML = '<tr><td colspan="7" class="empty-state">No crawl history</td></tr>';
             return;
         }
         this.historyBody.innerHTML = sessions.map(s => `
@@ -254,7 +254,10 @@ class CrawlerApp {
                 <td><span class="status-badge ${s.status}">${s.status}</span></td>
                 <td>${s.pages_crawled || 0}</td>
                 <td>${this.formatDate(s.started_at)}</td>
-                <td><button class="btn btn-secondary btn-sm" onclick="app.viewData(${s.id})">View</button></td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="app.viewData(${s.id})">View</button>
+                    <button class="btn btn-secondary btn-sm" onclick="app.analyzeSession(${s.id})">🤖</button>
+                </td>
             </tr>
         `).join('');
     }
@@ -508,6 +511,74 @@ class CrawlerApp {
     closeDiffModal() {
         const diffModal = document.getElementById('diffModal');
         if (diffModal) diffModal.classList.remove('active');
+    }
+
+    // ============== Classification Methods ==============
+
+    async analyzeSession(sessionId) {
+        try {
+            const response = await fetch(`/api/classify/session/${sessionId}?limit=30`);
+            if (!response.ok) {
+                const err = await response.json();
+                alert(err.detail || 'Failed to analyze');
+                return;
+            }
+            const data = await response.json();
+            this.showClassificationModal(data);
+        } catch (error) {
+            alert('Failed to analyze session');
+        }
+    }
+
+    showClassificationModal(data) {
+        const modalBody = document.getElementById('modalBody');
+        if (!modalBody) return;
+
+        // Category distribution chart
+        const categories = data.category_distribution || {};
+        const categoryHtml = Object.entries(categories)
+            .sort((a, b) => b[1] - a[1])
+            .map(([cat, count]) => `
+                <div class="category-bar">
+                    <span class="category-name">${cat}</span>
+                    <div class="category-fill" style="width: ${(count / data.total_classified) * 100}%"></div>
+                    <span class="category-count">${count}</span>
+                </div>
+            `).join('');
+
+        // Pages list
+        const pagesHtml = data.pages.map(p => `
+            <div class="data-card">
+                <div class="data-card-title">
+                    <span class="status-badge ${p.category.toLowerCase().replace(/\s+/g, '-')}">${p.category}</span>
+                    ${this.escapeHtml(p.title || 'No Title')}
+                </div>
+                <div class="data-card-url">${this.escapeHtml(p.url)}</div>
+                <div class="classification-meta">
+                    <span>📊 ${(p.confidence * 100).toFixed(0)}%</span>
+                    <span class="sentiment-${p.sentiment}">💭 ${p.sentiment}</span>
+                    <span>📝 ${p.word_count} words</span>
+                </div>
+                <div class="keywords-list">
+                    ${p.keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('')}
+                </div>
+            </div>
+        `).join('');
+
+        modalBody.innerHTML = `
+            <div class="classification-summary">
+                <h4>🤖 AI Classification Results</h4>
+                <p>Analyzed ${data.total_classified} pages from session #${data.session_id}</p>
+            </div>
+            <div class="category-distribution">
+                ${categoryHtml}
+            </div>
+            <div class="classification-pages">
+                ${pagesHtml}
+            </div>
+        `;
+
+        this.dataModal.classList.add('active');
     }
 }
 
