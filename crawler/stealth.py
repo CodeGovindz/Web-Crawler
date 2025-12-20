@@ -10,9 +10,22 @@ Features:
 
 import random
 import time
+import warnings
 from typing import Optional
 
-from fake_useragent import UserAgent
+# Suppress fake_useragent warnings
+warnings.filterwarnings('ignore', message='.*Error occurred during getting browser.*')
+
+# Static user agents (no network dependency)
+STATIC_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+]
 
 
 class StealthManager:
@@ -48,13 +61,6 @@ class StealthManager:
         self.rotate_agents = rotate_agents
         self.proxy_list = proxy_list or []
         self._proxy_index = 0
-        
-        # Initialize fake user agent
-        try:
-            self._ua = UserAgent(browsers=['chrome', 'firefox', 'edge'])
-        except Exception:
-            self._ua = None
-        
         self._last_user_agent: Optional[str] = None
     
     def get_user_agent(self) -> str:
@@ -62,18 +68,11 @@ class StealthManager:
         if self.custom_user_agent:
             return self.custom_user_agent
         
-        if self.rotate_agents and self._ua:
-            try:
-                return self._ua.random
-            except Exception:
-                pass
+        if self.rotate_agents:
+            return random.choice(STATIC_USER_AGENTS)
         
-        # Fallback to common Chrome UA
-        return (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        )
+        # Default Chrome UA
+        return STATIC_USER_AGENTS[0]
     
     def get_headers(self, referer: Optional[str] = None) -> dict[str, str]:
         """
