@@ -415,7 +415,126 @@ class CrawlerApp {
             this.loadSchedules();
         } catch (error) { alert('Failed to trigger'); }
     }
+
+    // ============== Change Detection Methods ==============
+
+    async loadChanges() {
+        try {
+            const response = await fetch('/api/changes');
+            const data = await response.json();
+            this.renderChanges(data.changes);
+        } catch (error) {
+            const changesBody = document.getElementById('changesBody');
+            if (changesBody) {
+                changesBody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load changes</td></tr>';
+            }
+        }
+    }
+
+    renderChanges(changes) {
+        const changesBody = document.getElementById('changesBody');
+        if (!changesBody) return;
+
+        if (!changes || changes.length === 0) {
+            changesBody.innerHTML = '<tr><td colspan="6" class="empty-state">No changes detected yet</td></tr>';
+            return;
+        }
+
+        changesBody.innerHTML = changes.map(c => `
+            <tr>
+                <td class="url-cell" title="${c.url}">${this.truncateUrl(c.url)}</td>
+                <td><span class="status-badge ${c.change_type}">${c.change_type}</span></td>
+                <td>${c.change_percent.toFixed(1)}%</td>
+                <td>${this.escapeHtml(c.diff_summary || '')}</td>
+                <td>${this.formatDate(c.detected_at)}</td>
+                <td>
+                    ${c.old_version_id && c.old_version_id > 0
+                ? `<button class="btn btn-secondary btn-sm" onclick="app.viewDiff(${c.old_version_id}, ${c.new_version_id})">Diff</button>`
+                : '-'
+            }
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    truncateUrl(url) {
+        try {
+            const u = new URL(url);
+            return u.hostname + (u.pathname.length > 30 ? u.pathname.substring(0, 30) + '...' : u.pathname);
+        } catch {
+            return url.substring(0, 40);
+        }
+    }
+
+    async viewDiff(oldId, newId) {
+        try {
+            const response = await fetch(`/api/changes/diff/${oldId}/${newId}`);
+            const data = await response.json();
+            this.showDiffModal(data);
+        } catch (error) {
+            alert('Failed to load diff');
+        }
+    }
+
+    showDiffModal(data) {
+        const diffModal = document.getElementById('diffModal');
+        const diffModalBody = document.getElementById('diffModalBody');
+        if (!diffModal || !diffModalBody) return;
+
+        const diffHtml = data.diff_lines.map(line => {
+            if (line.startsWith('+') && !line.startsWith('+++')) {
+                return `<div class="diff-line diff-add">${this.escapeHtml(line)}</div>`;
+            } else if (line.startsWith('-') && !line.startsWith('---')) {
+                return `<div class="diff-line diff-remove">${this.escapeHtml(line)}</div>`;
+            } else if (line.startsWith('@@')) {
+                return `<div class="diff-line diff-header">${this.escapeHtml(line)}</div>`;
+            }
+            return `<div class="diff-line">${this.escapeHtml(line)}</div>`;
+        }).join('');
+
+        diffModalBody.innerHTML = `
+            <div class="diff-summary">
+                <div><strong>Change:</strong> ${data.change_percent.toFixed(1)}%</div>
+                <div><strong>Added:</strong> <span class="text-success">+${data.added_lines}</span></div>
+                <div><strong>Removed:</strong> <span class="text-danger">-${data.removed_lines}</span></div>
+                <div><strong>Summary:</strong> ${data.summary}</div>
+            </div>
+            <div class="diff-content">${diffHtml || '<p>No diff available</p>'}</div>
+        `;
+
+        diffModal.classList.add('active');
+    }
+
+    closeDiffModal() {
+        const diffModal = document.getElementById('diffModal');
+        if (diffModal) diffModal.classList.remove('active');
+    }
 }
 
 // Initialize app
 const app = new CrawlerApp();
+
+// Additional event listeners after app init
+document.addEventListener('DOMContentLoaded', () => {
+    // Refresh changes button
+    const refreshChangesBtn = document.getElementById('refreshChanges');
+    if (refreshChangesBtn) {
+        refreshChangesBtn.addEventListener('click', () => app.loadChanges());
+    }
+
+    // Close diff modal
+    const closeDiffBtn = document.getElementById('closeDiffModal');
+    if (closeDiffBtn) {
+        closeDiffBtn.addEventListener('click', () => app.closeDiffModal());
+    }
+
+    const diffModal = document.getElementById('diffModal');
+    if (diffModal) {
+        diffModal.addEventListener('click', (e) => {
+            if (e.target === diffModal) app.closeDiffModal();
+        });
+    }
+
+    // Load changes on page load
+    app.loadChanges();
+});

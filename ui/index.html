@@ -233,6 +233,34 @@
                 </div>
             </div>
 
+            <!-- Changes Section -->
+            <section class="glass-card changes-section">
+                <div class="section-header">
+                    <h2>🔄 Content Changes</h2>
+                    <button class="btn btn-secondary btn-sm" id="refreshChanges">↻ Refresh</button>
+                </div>
+
+                <div class="history-table-container">
+                    <table class="history-table" id="changesTable">
+                        <thead>
+                            <tr>
+                                <th>URL</th>
+                                <th>Type</th>
+                                <th>Change %</th>
+                                <th>Summary</th>
+                                <th>Detected</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="changesBody">
+                            <tr>
+                                <td colspan="6" class="empty-state">No changes detected yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <!-- Data Viewer Modal -->
             <div class="modal" id="dataModal">
                 <div class="modal-content glass-card">
@@ -242,6 +270,19 @@
                     </div>
                     <div class="modal-body" id="modalBody">
                         <!-- Data will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Diff Viewer Modal -->
+            <div class="modal" id="diffModal">
+                <div class="modal-content glass-card" style="max-width: 900px;">
+                    <div class="modal-header">
+                        <h3>Version Diff</h3>
+                        <button class="modal-close" id="closeDiffModal">&times;</button>
+                    </div>
+                    <div class="modal-body" id="diffModalBody">
+                        <!-- Diff will be loaded here -->
                     </div>
                 </div>
             </div>

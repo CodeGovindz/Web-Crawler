@@ -6,6 +6,7 @@ Provides:
 - WebSocket for real-time progress updates
 - Crawl history and data viewing
 - Schedule management for recurring crawls
+- Change detection and monitoring
 """
 
 import asyncio
@@ -25,35 +26,41 @@ from crawler.storage import CrawlDatabase, ContentStorage
 from crawler.scheduler import (
     CrawlScheduler, ScheduleConfig, ScheduleType, ScheduleStatus, get_scheduler
 )
+from crawler.changes import ChangeDatabase, ChangeDetector, get_change_db
 
 
 app = FastAPI(
     title="SOTA Web Crawler",
     description="State-of-the-art web crawling system with real-time monitoring",
-    version="1.1.0"
+    version="1.2.0"
 )
 
-# Global scheduler
+# Global instances
 scheduler: Optional[CrawlScheduler] = None
+change_db: Optional[ChangeDatabase] = None
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize scheduler on startup."""
-    global scheduler
+    """Initialize scheduler and change detection on startup."""
+    global scheduler, change_db
     scheduler = get_scheduler(
         db_path=Path("./data/scheduler.db"),
         output_dir=Path("./data")
     )
     await scheduler.start()
+    
+    change_db = get_change_db(Path("./data/changes.db"))
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Cleanup scheduler on shutdown."""
-    global scheduler
+    """Cleanup on shutdown."""
+    global scheduler, change_db
     if scheduler:
         await scheduler.stop()
+    if change_db:
+        change_db.close()
 
 # Global state
 active_crawlers: dict[str, dict] = {}
@@ -508,6 +515,168 @@ async def run_schedule_now(schedule_id: int):
     asyncio.create_task(scheduler._run_crawl(schedule_id))
     
     return {"message": "Schedule triggered"}
+
+
+# ============== Change Detection API Endpoints ==============
+
+class MonitorUrlRequest(BaseModel):
+    """Request to add a URL for monitoring."""
+    url: str
+    name: Optional[str] = None
+    check_interval_hours: int = 24
+
+
+class CheckUrlRequest(BaseModel):
+    """Request to check a URL for changes."""
+    url: str
+    html: str
+
+
+@app.get("/api/changes")
+async def get_recent_changes():
+    """Get recent content changes across all monitored URLs."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    changes = change_db.get_recent_changes(limit=50)
+    return {"changes": changes}
+
+
+@app.get("/api/changes/tracked")
+async def get_tracked_urls():
+    """Get all URLs being tracked for changes."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    urls = change_db.get_tracked_urls()
+    monitored = change_db.get_monitored_urls()
+    
+    return {
+        "tracked_urls": urls,
+        "monitored_urls": monitored
+    }
+
+
+@app.post("/api/changes/monitor")
+async def add_monitored_url(request: MonitorUrlRequest):
+    """Add a URL to actively monitor for changes."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    url_id = change_db.add_monitored_url(
+        request.url, 
+        request.name, 
+        request.check_interval_hours
+    )
+    
+    return {"message": "URL added for monitoring", "id": url_id}
+
+
+@app.delete("/api/changes/monitor/{url_id}")
+async def remove_monitored_url(url_id: int):
+    """Remove a URL from monitoring."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    if change_db.delete_monitored_url(url_id):
+        return {"message": "URL removed from monitoring"}
+    raise HTTPException(status_code=404, detail="Monitored URL not found")
+
+
+@app.get("/api/changes/url/{url_path:path}")
+async def get_url_changes(url_path: str):
+    """Get change history for a specific URL."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    # Reconstruct URL (path param strips the protocol)
+    url = url_path if url_path.startswith("http") else f"https://{url_path}"
+    
+    changes = change_db.get_changes_for_url(url)
+    versions = change_db.get_version_history(url)
+    
+    return {
+        "url": url,
+        "changes": changes,
+        "versions": [
+            {
+                "id": v.id,
+                "title": v.title,
+                "word_count": v.word_count,
+                "captured_at": v.captured_at.isoformat() if v.captured_at else None
+            }
+            for v in versions
+        ]
+    }
+
+
+@app.get("/api/changes/version/{version_id}")
+async def get_version_content(version_id: int):
+    """Get the content of a specific version."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    version = change_db.get_version(version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    
+    return {
+        "id": version.id,
+        "url": version.url,
+        "title": version.title,
+        "text_content": version.text_content[:5000],  # Limit content size
+        "word_count": version.word_count,
+        "captured_at": version.captured_at.isoformat() if version.captured_at else None
+    }
+
+
+@app.get("/api/changes/diff/{old_id}/{new_id}")
+async def get_version_diff(old_id: int, new_id: int):
+    """Get diff between two versions."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    old_version = change_db.get_version(old_id)
+    new_version = change_db.get_version(new_id)
+    
+    if not old_version or not new_version:
+        raise HTTPException(status_code=404, detail="Version(s) not found")
+    
+    detector = ChangeDetector(change_db)
+    diff_result = detector.calculate_diff(
+        old_version.text_content, 
+        new_version.text_content
+    )
+    
+    return {
+        "old_version": {"id": old_id, "title": old_version.title},
+        "new_version": {"id": new_id, "title": new_version.title},
+        "change_percent": diff_result['change_percent'],
+        "added_lines": diff_result['added'],
+        "removed_lines": diff_result['removed'],
+        "summary": diff_result['summary'],
+        "diff_lines": diff_result['diff_lines'][:50]  # Limit for API response
+    }
+
+
+@app.post("/api/changes/check")
+async def check_url_for_changes(request: CheckUrlRequest):
+    """Check a URL for changes with provided HTML content."""
+    if not change_db:
+        raise HTTPException(status_code=503, detail="Change detection not initialized")
+    
+    detector = ChangeDetector(change_db)
+    change = detector.check_for_changes(request.url, request.html)
+    
+    if change:
+        return {
+            "changed": True,
+            "change_type": change.change_type,
+            "change_percent": change.change_percent,
+            "summary": change.diff_summary
+        }
+    
+    return {"changed": False}
 
 
 # Mount static files for UI
