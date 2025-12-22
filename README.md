@@ -53,23 +53,6 @@ python main.py crawl https://spa-site.com --render
 python main.py resume
 ```
 
-## 🌐 Deploy to Railway
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/fastapi)
-
-### Manual Deployment:
-1. Go to [railway.app](https://railway.app) and sign in with GitHub
-2. Click **"New Project"** → **"Deploy from GitHub repo"**
-3. Select **CodeGovindz/Web-Crawler**
-4. Railway auto-detects the config and deploys!
-5. Click **"Generate Domain"** to get your public URL
-
-The project includes:
-- `Procfile` - Start command
-- `runtime.txt` - Python 3.11
-- `nixpacks.toml` - Build config
-- `railway.json` - Deploy settings
-
 ## 📋 API Endpoints
 
 | Endpoint | Method | Description |
@@ -110,4 +93,3 @@ Web-Crawler/
 ## 📄 License
 
 MIT
-
